@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>ΚΟΥΜ ΚΑΝ</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10140f;color:#f3ead2;font:15px system-ui,sans-serif}
+button,select,input{font:inherit;border-radius:12px;border:1px solid #c9a24a;background:#1b2219;color:#f3ead2;padding:10px 14px}
+button{background:#c9a24a;color:#1a1408;font-weight:700}button:disabled{opacity:.4}button.g{background:#1b2219;color:#c9a24a}
+.app{max-width:520px;margin:0 auto;padding:12px;min-height:100vh;display:flex;flex-direction:column;gap:10px}
+h1{color:#c9a24a;letter-spacing:4px;text-align:center}.panel{background:#1b2219;border-radius:16px;padding:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.sp{justify-content:space-between}
+.table{background:radial-gradient(#1f6b3a,#0d3b1f);border:3px solid #c9a24a;border-radius:24px;padding:10px;display:flex;flex-direction:column;gap:10px;flex:1}
+.card{width:46px;height:66px;flex:none;border-radius:8px;background:#f8f1dc;color:#1a1a1a;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:17px;border:1px solid #b9ad8a;box-shadow:0 2px 4px #0006;transition:transform .15s,box-shadow .15s;cursor:pointer;line-height:1.1}
+.card.red{color:#b3201f}.card.back{background:repeating-linear-gradient(45deg,#7a1f2b,#7a1f2b 5px,#5e1721 5px,#5e1721 10px);border:2px solid #f8f1dc}
+.card.sel{transform:translateY(-14px);box-shadow:0 0 0 3px #c9a24a,0 6px 10px #0008}.card.sm{width:34px;height:48px;font-size:13px}
+.card.joker{background:#efe0ff}.card.can{box-shadow:0 0 0 3px #4ade80;animation:p 1s infinite}@keyframes p{50%{transform:scale(1.12)}}
+.hand{display:flex;overflow-x:auto;padding:18px 6px 6px}.hand .card{margin-right:-10px}
+.meld{background:#0006;border-radius:10px;padding:6px;display:flex;gap:2px;flex-wrap:wrap;position:relative;cursor:pointer}.meld.tgt{outline:2px dashed #c9a24a}.meld.tgt::after{content:'⬇ add';position:absolute;top:-10px;right:8px;background:#c9a24a;color:#000;font-size:11px;padding:0 6px;border-radius:6px}
+.opp{background:#0006;border-radius:10px;padding:4px 8px;font-size:13px}.opp.turn,.me.turn{outline:2px solid #c9a24a}
+.log{font-size:12px;max-height:84px;overflow:auto;opacity:.8}.err{color:#ff8a80}.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px}
+.code{font-size:34px;letter-spacing:8px;font-weight:800;color:#c9a24a}.pl{padding:8px;border-radius:10px;background:#0004;margin-top:6px}
+</style></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>
