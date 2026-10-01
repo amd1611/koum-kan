@@ -5,17 +5,28 @@ const L:any={en:{create:'Create Game',join:'Join Game',name:'Nickname',code:'Roo
   disc:'Discard',next:'Next Round',rematch:'Rematch',lobby:'Return to Lobby',pts:'Points',hat:'Hat',round:'Round',copy:'Copy link',share:'Invite',over:'ROUND OVER',turn:'Your turn',players:'Players',host:'Host',wins:'wins the game!',cancel:'Everyone over the limit — round replayed',leave:'Leave',endr:'End round',aborted:'Round ended by the host — it will be replayed',bot:'Add bot',invited:'You were invited to room',wait:'Waiting for the host to start…',need:'Share the link or code — need 2+ players'},
  el:{create:'Νέο Παιχνίδι',join:'Συμμετοχή',name:'Ψευδώνυμο',code:'Κωδικός',ready:'Έτοιμος',start:'Έναρξη',draw:'Τράπουλα',dis:'Καμένα',hand:'Χέρι',lay:'Κατέβασμα',
   disc:'Ρίξε',next:'Επόμενος Γύρος',rematch:'Ρεβάνς',lobby:'Πίσω στο Λόμπι',pts:'Πόντοι',hat:'Καπέλο',round:'Γύρος',copy:'Αντιγραφή συνδέσμου',share:'Πρόσκληση',over:'ΤΕΛΟΣ ΓΥΡΟΥ',turn:'Η σειρά σου',players:'Παίκτες',host:'Διοργανωτής',wins:'κερδίζει!',cancel:'Όλοι πάνω από το όριο — ο γύρος επαναλαμβάνεται',leave:'Έξοδος',endr:'Τέλος γύρου',aborted:'Ο γύρος τελείωσε από τον διοργανωτή — επαναλαμβάνεται',bot:'Πρόσθεσε bot',invited:'Σε προσκάλεσαν στο δωμάτιο',wait:'Περιμένουμε τον διοργανωτή…',need:'Μοιράσου τον σύνδεσμο ή τον κωδικό — χρειάζονται 2+ παίκτες'}};
-const Card=({c,sel,can,sm,onClick}:any)=>c?<div onClick={onClick} className={`card ${c.suit==='H'||c.suit==='D'?'red':''} ${sel?'sel':''} ${can?'can':''} ${sm?'sm':''} ${c.rank==='JOKER'?'joker':''}`}>
-  {c.rank==='JOKER'?<b>★</b>:<><b>{c.rank}</b><span>{SY[c.suit]}</span></>}</div>:null;
+const Card=({c,sel,can,sm,back,onClick,style,drag}:any)=>{
+  if(back)return<div className={`pc back ${sm?'sm':''}`} style={style}/>;
+  if(!c)return null;
+  const j=c.rank==='JOKER',red=c.suit==='H'||c.suit==='D',face=['J','Q','K'].includes(c.rank),n=Number(c.rank),sym=SY[c.suit];
+  return<div onClick={onClick} {...drag} style={style} className={`pc ${red?'red':''} ${sel?'sel':''} ${can?'can':''} ${sm?'sm':''} ${j?'joker':''}`}>
+    {j?<><span className="jk">JOKER</span><div className="mid">★</div></>:<>
+      <div className="ix tl"><b>{c.rank}</b><u>{sym}</u></div>
+      {n>=2&&n<=10?<div className="pips" style={{gridTemplateColumns:`repeat(${n<=3?1:n<=6?2:3},1fr)`}}>{Array.from({length:n},(_,i)=><span key={i}>{sym}</span>)}</div>
+        :<div className={`mid ${face?'face':''}`}>{face?<><b>{c.rank}</b><u>{sym}</u></>:sym}</div>}
+      <div className="ix br"><b>{c.rank}</b><u>{sym}</u></div></>}
+  </div>;
+};
+
 function Inner({land,toggleLand}:any){
   const sock=useRef<Socket>();const [st,setSt]=useState<any>(null);const [sel,setSel]=useState<string[]>([]);const [err,setErr]=useState('');
-  const [lang,setLang]=useState('el');const [name,setName]=useState(localStorage.kkName||'');const [code,setCode]=useState(inv);const [jk,setJk]=useState<any>(null);const [decl,setDecl]=useState<any>({});
+  const [ord,setOrd]=useState<string[]>([]);const [lang,setLang]=useState('el');const [name,setName]=useState(localStorage.kkName||'');const [code,setCode]=useState(inv);const [jk,setJk]=useState<any>(null);const [decl,setDecl]=useState<any>({});
   const t=(k:string)=>L[lang][k];
   useEffect(()=>{const s=io();sock.current=s;
     s.on('connect',()=>{let c=localStorage.kkCode;const sid=localStorage.kkSid;if(inv&&inv!==c){localStorage.removeItem('kkCode');c='';}
       if(c&&sid)s.emit('join',{code:c,sid},(r:any)=>{if(r?.error){localStorage.removeItem('kkCode');setSt(null);}});});
     s.on('joined',({code,sid}:any)=>{localStorage.kkCode=code;localStorage.kkSid=sid;inv='';history.replaceState(null,'',location.pathname);});
-    s.on('state',(x:any)=>{setSt(x);setSel(v=>v.filter(id=>x.hand.some((c:any)=>c.id===id)));});
+    s.on('state',(x:any)=>{setSt(x);setOrd(o=>{const ids=x.hand.map((c:any)=>c.id);return[...o.filter(i=>ids.includes(i)),...ids.filter((i:string)=>!o.includes(i))];});setSel(v=>v.filter(id=>x.hand.some((c:any)=>c.id===id)));});
     const hb=setInterval(()=>s.emit('hb'),240000); // keep free hosts awake while a game is open
     return()=>{clearInterval(hb);s.close();};},[]);
   const send=(ev:string,a:any={})=>{setErr('');sock.current!.emit(ev,a,(r:any)=>{if(r?.error)setErr(r.error);else if(['meld','add','replace','discard'].includes(ev))setSel([]);});};
@@ -46,19 +57,33 @@ function Inner({land,toggleLand}:any){
       <label>{t('hat')} <select disabled={!isHost} value={cfg.hatLimit} onChange={e=>send('settings',{hatLimit:+e.target.value})}>{[50,100,150,200].map(n=><option key={n}>{n}</option>)}</select></label></div>
     {isHost?<><button disabled={st.players.length<2} onClick={()=>send('start')}>{t('start')}</button> <button className="g" disabled={st.players.length>=10} onClick={()=>send('addBot')}>🤖 {t('bot')}</button></>:<><button onClick={()=>send('ready')}>{t('ready')}</button><div style={{opacity:.7}}>{t('wait')}</div></>}<div className="err">{err}</div>{Log}</div>;
   const others=st.players.filter((p:any)=>p.id!==st.you);
-  return<div className={land?'app land':'app'}><div className="row sp hd"><b>{t('round')} {st.round}</b><span>{me.name}: {me.score} {t('pts')} {'🎩'.repeat(me.hats)}</span>{LangBtn}{LandBtn}{isHost&&st.phase==='play'&&<button className="g" onClick={()=>confirm(t('endr')+'?')&&send('abort')}>⏹ {t('endr')}</button>}</div>
+  const ix=(id:string)=>{const i=ord.indexOf(id);return i<0?1e9:i;};
+  const hand=[...st.hand].sort((a:any,b:any)=>ix(a.id)-ix(b.id));const ids:string[]=hand.map((c:any)=>c.id);
+  const moveTo=(f:string,to:string)=>{if(f===to)return;const a=ids.filter(i=>i!==f);a.splice(a.indexOf(to)+(ids.indexOf(f)<ids.indexOf(to)?1:0),0,f);setOrd(a);};
+  const shift=(d:number)=>{if(sel.length!==1)return;const i=ids.indexOf(sel[0]),k=i+d;if(k<0||k>=ids.length)return;const a=[...ids];[a[i],a[k]]=[a[k],a[i]];setOrd(a);};
+  const rk=(c:any)=>c.rank==='JOKER'?99:RANKS.indexOf(c.rank),sk=(c:any)=>c.suit?SUITS.indexOf(c.suit):9;
+  const sortBy=(f:(c:any)=>number)=>setOrd([...hand].sort((a:any,b:any)=>f(a)-f(b)).map((c:any)=>c.id));
+  const fan=(i:number)=>{const m=i-(ids.length-1)/2;return{transform:`rotate(${m*2}deg) translateY(${Math.abs(m)*1.2}px)`,transformOrigin:'50% 130%'};};
+  const canDraw=myTurn&&!st.drew;
+  return<div className={land?'app land':'app'}><div className="row sp hd"><b>{t('round')} {st.round}</b><span>{me.name}: {me.score} {t('pts')} {'🎩'.repeat(me.hats)}</span>
+    <span className="row">{LangBtn}{LandBtn}{isHost&&st.phase==='play'&&<button className="g" onClick={()=>confirm(t('endr')+'?')&&send('abort')}>⏹</button>}</span></div>
     <div className="table">
-      <div className="row opps">{others.map((p:any)=><div key={p.id} className={`opp ${st.turn===p.id?'turn':''}`}>{p.name}{!p.connected&&' ⚠'}<br/>🂠 {p.n} · {p.score} {'🎩'.repeat(p.hats)}</div>)}</div>
+      <div className="row opps">{others.map((p:any)=><div key={p.id} className={`av ${st.turn===p.id?'turn':''}`}><div className="ring"><b>{p.name[0]}</b><span className="cnt">{p.n}</span></div><div className="nm">{p.name}{!p.connected&&' ⚠'}</div><div className="sc">{p.score} {'🎩'.repeat(p.hats)}</div></div>)}</div>
       <div className="melds" style={{display:'flex',flexDirection:'column',gap:6,flex:1}}>{st.melds.map((m:any)=>{const one=cards.length===1?cards[0]:null;
         return<div key={m.id} className={`meld ${sel.length&&myTurn&&st.drew&&me.laid?'tgt':''}`} onClick={()=>sel.length&&withJokers(d=>send('add',{meldId:m.id,ids:sel,decl:d}))}>
           {m.slots.map((s:any,i:number)=>{const j=s.card.rank==='JOKER';return<div key={i} onClick={e=>{if(j&&one&&canReplace(s,one)){e.stopPropagation();send('replace',{meldId:m.id,idx:i,cardId:one.id});}}}>
             <Card c={j?{...s.card,rank:s.rank,suit:s.suit}:s.card} sm can={j&&!!one&&canReplace(s,one)}/>{j&&<div style={{fontSize:10,textAlign:'center'}}>★</div>}</div>;})}</div>;})}</div>
-      <div className="row piles" style={{justifyContent:'center',gap:24}}><div onClick={()=>myTurn&&send('draw',{src:'deck'})} style={{textAlign:'center'}}><div className="card back"/>{t('draw')} ({st.deck})</div>
-        <div onClick={()=>myTurn&&send('draw',{src:'discard'})} style={{textAlign:'center'}}>{st.top?<Card c={st.top}/>:<div className="card"/>}{t('dis')}</div></div></div>
-    <div className={`panel me ${myTurn?'turn':''}`}><div className="row sp"><b>{t('hand')} {myTurn&&`— ${t('turn')}${st.drew?'':' ↓ draw'}`}</b>
-      <span className="row"><button disabled={!myTurn||!st.drew||sel.length<3} onClick={()=>withJokers(d=>send('meld',{ids:sel,decl:d}))}>{t('lay')}</button>
-      <button disabled={!myTurn||!st.drew||sel.length!==1} onClick={()=>send('discard',{id:sel[0]})}>{t('disc')}</button></span></div>
-      <div className="hand">{st.hand.map((c:any)=><Card key={c.id} c={c} sel={sel.includes(c.id)} onClick={()=>setSel(v=>v.includes(c.id)?v.filter(x=>x!==c.id):[...v,c.id])}/>)}</div>
+      <div className="row piles" style={{justifyContent:'center',gap:28}}>
+        <div className={`pile ${canDraw?'hot':''}`} onClick={()=>canDraw&&send('draw',{src:'deck'})}><Card back/><small>{t('draw')} · {st.deck}</small></div>
+        <div className={`pile ${canDraw&&st.top?'hot':''}`} onClick={()=>canDraw&&send('draw',{src:'discard'})}>{st.top?<Card c={st.top}/>:<div className="pc empty"/>}<small>{t('dis')}</small></div></div></div>
+    <div className={`panel me ${myTurn?'turn':''}`}>
+      <div className="toast">{myTurn&&<b>{t('turn')}{st.drew?'':' ↑ '} · </b>}{st.log[st.log.length-1]}</div>
+      <div className="row sp"><span className="row"><button className="tb" disabled={sel.length!==1} onClick={()=>shift(-1)}>◀</button><button className="tb" disabled={sel.length!==1} onClick={()=>shift(1)}>▶</button>
+        <button className="tb g" onClick={()=>sortBy(rk)}>A→K</button><button className="tb g" onClick={()=>sortBy(c=>sk(c)*20+rk(c))}>♠♥♦♣</button></span>
+        <span className="row"><button className="rb ok" disabled={!myTurn||!st.drew||sel.length<3} onClick={()=>withJokers(d=>send('meld',{ids:sel,decl:d}))}>✔<small>{t('lay')}</small></button>
+        <button className="rb no" disabled={!myTurn||!st.drew||sel.length!==1} onClick={()=>send('discard',{id:sel[0]})}>✖<small>{t('disc')}</small></button></span></div>
+      <div className="hand">{hand.map((c:any,i:number)=>{const on=sel.includes(c.id);return<Card key={c.id} c={c} sel={on} style={on?undefined:fan(i)} onClick={()=>setSel(v=>on?v.filter(x=>x!==c.id):[...v,c.id])}
+        drag={{draggable:true,onDragStart:(e:any)=>e.dataTransfer.setData('t',c.id),onDragOver:(e:any)=>e.preventDefault(),onDrop:(e:any)=>moveTo(e.dataTransfer.getData('t'),c.id)}}/>;})}</div>
       <div className="err">{err}</div></div>{Log}
     {jk&&<div className="modal"><div className="panel">{jk.js.map((c:any)=><div key={c.id} className="row" style={{marginBottom:8}}>★ =
       <select onChange={e=>setDecl((d:any)=>({...d,[c.id]:{...d[c.id],rank:e.target.value}}))}><option value="">?</option>{RANKS.map(r=><option key={r}>{r}</option>)}</select>
