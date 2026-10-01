@@ -16,4 +16,12 @@ h1{color:#c9a24a;letter-spacing:4px;text-align:center}.panel{background:#1b2219;
 .opp{background:#0006;border-radius:10px;padding:4px 8px;font-size:13px}.opp.turn,.me.turn{outline:2px solid #c9a24a}
 .log{font-size:12px;max-height:84px;overflow:auto;opacity:.8}.err{color:#ff8a80}.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;padding:16px}
 .code{font-size:34px;letter-spacing:8px;font-weight:800;color:#c9a24a}.pl{padding:8px;border-radius:10px;background:#0004;margin-top:6px}
+
+.landwrap{position:fixed;top:0;left:0;width:100vw;height:100vh;height:100dvh;overflow:auto;background:#10140f}
+.landwrap.rot{width:100vh;height:100vw;transform:rotate(90deg) translateY(-100%);transform-origin:top left}
+.app.land{max-width:none;height:100%;min-height:0;padding:6px;gap:6px;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto 1fr auto;
+ grid-template-areas:"hd hd" "opps opps" "piles melds" "me me";background:radial-gradient(#1f6b3a,#0d3b1f)}
+.land .table{display:contents}.land .hd{grid-area:hd}.land .opps{grid-area:opps;flex-wrap:nowrap;overflow-x:auto}.land .piles{grid-area:piles;align-self:center;flex-wrap:nowrap}
+.land .melds{grid-area:melds;overflow:auto;flex-direction:row!important;flex-wrap:wrap;align-content:flex-start}.land .panel.me{grid-area:me;padding:6px}.land .log{display:none}
+.land .card{width:54px;height:78px;font-size:20px}.land .card.sm{width:36px;height:52px;font-size:14px}.land .piles .card{width:68px;height:98px}.land .hand{padding-top:16px}.land .hand .card{margin-right:-20px}
 </style></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>

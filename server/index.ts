@@ -2,9 +2,9 @@ import express from 'express';import http from 'http';import {Server} from 'sock
 import {Card,Config,Meld,Slot,DEFAULT_CONFIG,RANKS,SUITS,buildDeck,checkMeld,canReplace,pointValue} from '../shared/rules';
 const app=express();app.use(express.static('dist'));
 const srv=http.createServer(app);const io=new Server(srv);
-interface P{id:string;name:string;sock?:string;ready:boolean;hand:Card[];score:number;hats:number;laid:boolean}
-interface R{code:string;host:string;cfg:Config;phase:'lobby'|'play'|'roundEnd'|'over';players:P[];deck:Card[];discard:Card[];melds:Meld[];turn:number;drew:boolean;log:string[];round:number;result?:any}
-const rooms=new Map<string,R>();
+interface P{id:string;name:string;sock?:string;ready:boolean;hand:Card[];score:number;hats:number;laid:boolean;bot?:boolean}
+interface R{bt?:any;code:string;host:string;cfg:Config;phase:'lobby'|'play'|'roundEnd'|'over';players:P[];deck:Card[];discard:Card[];melds:Meld[];turn:number;drew:boolean;log:string[];round:number;result?:any}
+const rooms=new Map<string,R>();const H:any={}; // H = action handlers, reused by bots
 const AL='ABCDEFGHJKLMNPQRTUVWXYZ2346789'; // no O/0/I/1/S/5
 const shuffle=<T,>(a:T[])=>{for(let i=a.length-1;i>0;i--){const j=randomInt(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;};
 const say=(r:R,m:string)=>{r.log.push(m);if(r.log.length>60)r.log.shift();};
@@ -12,8 +12,9 @@ const cs=(c:Card)=>c.rank==='JOKER'?'Joker':c.rank+'♠♥♦♣'['SHDC'.indexOf
 // Each player gets ONLY their own hand; others' hands are just counts (revealed in result at round end)
 const view=(r:R,p:P)=>({code:r.code,host:r.host,you:p.id,cfg:r.cfg,phase:r.phase,round:r.round,turn:r.players[r.turn]?.id,drew:r.drew,
   deck:r.deck.length,top:r.discard.at(-1)??null,melds:r.melds,log:r.log.slice(-30),hand:p.hand,result:r.result,
-  players:r.players.map(q=>({id:q.id,name:q.name,ready:q.ready,connected:!!q.sock,n:q.hand.length,score:q.score,hats:q.hats,laid:q.laid}))});
-const push=(r:R)=>r.players.forEach(p=>p.sock&&io.to(p.sock).emit('state',view(r,p)));
+  players:r.players.map(q=>({id:q.id,name:q.name,ready:q.ready,connected:!!q.sock||!!q.bot,bot:!!q.bot,n:q.hand.length,score:q.score,hats:q.hats,laid:q.laid}))});
+const push=(r:R)=>{r.players.forEach(p=>p.sock&&io.to(p.sock).emit('state',view(r,p)));
+  if(r.phase==='play'&&r.players[r.turn]?.bot&&!r.bt)r.bt=setTimeout(()=>{r.bt=undefined;botTurn(r);push(r);},1300);};
 function startRound(r:R){
   r.deck=shuffle(buildDeck(r.cfg));r.melds=[];r.drew=false;r.result=undefined;r.phase='play';
   r.players.forEach(p=>{p.hand=r.deck.splice(0,r.cfg.handSize);p.laid=false;});
@@ -42,9 +43,57 @@ const slotsFor=(cards:Card[],d:any={}):Slot[]=>cards.map(c=>{
   const x=d[c.id];if(!x||!RANKS.includes(x.rank)||!SUITS.includes(x.suit))throw Error('Declare what the Joker represents');
   return{card:c,rank:x.rank,suit:x.suit};});
 const drop=(p:P,cards:Card[])=>{if(cards.length>=p.hand.length)throw Error('You must keep one card to discard');p.hand=p.hand.filter(c=>!cards.includes(c));};
+// ===== BOT AI =====
+// Each bot turn: pick deck/discard by whether the discard completes a meld or fits the table -> swap back Jokers it can ->
+// lay the best set of disjoint melds (exhaustive search, keeps 1 card) -> add leftovers to table melds -> discard the
+// card with highest points and least connection to the rest of its hand. Uses the same server action handlers as humans.
+const NAMES=['Maria','Andreas','George','Christos','Eleni','Nikos','Sofia','Dimitris','Costas'];
+const val=(cs:Card[],cfg:Config)=>cs.reduce((a,c)=>a+pointValue(c,cfg),0);
+function jokerFor(base:Slot[],j:Card,cfg:Config){for(const rank of RANKS)for(const suit of SUITS)if(checkMeld([...base,{card:j,rank,suit}],cfg))return{rank,suit};return null;}
+function allMelds(hand:Card[],cfg:Config){
+  const out:{mask:number;cards:Card[];decl:any;val:number}[]=[];
+  for(let m=1;m<(1<<hand.length);m++){
+    const cs=hand.filter((_,i)=>(m>>i)&1),js=cs.filter(c=>c.rank==='JOKER');
+    if(cs.length<cfg.minMeld||js.length>1)continue;
+    const base:Slot[]=cs.filter(c=>c.rank!=='JOKER').map(c=>({card:c,rank:c.rank,suit:c.suit!}));
+    if(!js.length){if(checkMeld(base,cfg))out.push({mask:m,cards:cs,decl:{},val:val(cs,cfg)});continue;}
+    if(cs.length>5)continue;const d=jokerFor(base,js[0],cfg);if(d)out.push({mask:m,cards:cs,decl:{[js[0].id]:d},val:val(cs,cfg)});
+  }
+  return out;
+}
+function pack(hand:Card[],cfg:Config,maxUse:number){
+  const ms=allMelds(hand,cfg).sort((a,b)=>b.val-a.val).slice(0,200);let best:{val:number;sel:typeof ms}={val:0,sel:[]};
+  const go=(i:number,used:number,v:number,sel:typeof ms,cnt:number)=>{if(v>best.val)best={val:v,sel};
+    for(let k=i;k<ms.length;k++){const m=ms[k];if((m.mask&used)||cnt+m.cards.length>maxUse)continue;go(k+1,used|m.mask,v+m.val,[...sel,m],cnt+m.cards.length);}};
+  go(0,0,0,[],0);return best;
+}
+function fitDecl(m:Meld,c:Card,cfg:Config):any{
+  if(c.rank!=='JOKER')return checkMeld([...m.slots,{card:c,rank:c.rank,suit:c.suit!}],cfg)?{}:null;
+  const d=jokerFor(m.slots,c,cfg);return d?{[c.id]:d}:null;
+}
+function conn(c:Card,hand:Card[]){let k=0;for(const o of hand){if(o===c)continue;if(o.rank==='JOKER')k+=1;else if(c.rank===o.rank)k+=2;
+  else if(c.suit===o.suit){const d=Math.abs(RANKS.indexOf(c.rank)-RANKS.indexOf(o.rank));if(d===1)k+=2;else if(d===2)k+=1;}}return k;}
+function botTurn(r:R){
+  const p=r.players[r.turn];if(!p?.bot||r.phase!=='play')return;const cfg=r.cfg;
+  try{
+    const top=r.discard.at(-1);let src='deck';
+    if(top){const cap=p.hand.length,gain=pack([...p.hand,top],cfg,cap).val>pack(p.hand,cfg,cap).val;
+      const addable=p.laid&&r.melds.some(m=>fitDecl(m,top,cfg));
+      if(top.rank==='JOKER'||gain||addable||(conn(top,p.hand)>=3&&pointValue(top,cfg)<=8))src='discard';}
+    H.draw(r,p,{src});const took=src==='discard'?top:null;
+    if(p.laid)for(const m of r.melds)m.slots.forEach((s,i)=>{const c=p.hand.find(h=>canReplace(s,h));if(c)H.replace(r,p,{meldId:m.id,idx:i,cardId:c.id});});
+    for(const m of pack(p.hand,cfg,p.hand.length-1).sel)H.meld(r,p,{ids:m.cards.map(c=>c.id),decl:m.decl});
+    for(let moved=true;moved&&p.laid&&p.hand.length>1;){moved=false;
+      for(const c of [...p.hand].sort((a,b)=>pointValue(b,cfg)-pointValue(a,cfg))){
+        const m=r.melds.find(x=>fitDecl(x,c,cfg));if(m){H.add(r,p,{meldId:m.id,ids:[c.id],decl:fitDecl(m,c,cfg)});moved=true;break;}}}
+    const pool=p.hand.filter(c=>c!==took&&c.rank!=='JOKER'),opts=pool.length?pool:p.hand;
+    const sc=(c:Card)=>pointValue(c,cfg)-6*conn(c,p.hand);
+    H.discard(r,p,{id:opts.reduce((b,c)=>sc(c)>sc(b)?c:b).id});
+  }catch(e){try{if(!r.drew)H.draw(r,p,{src:'deck'});H.discard(r,p,{id:[...p.hand].sort((a,b)=>pointValue(b,cfg)-pointValue(a,cfg))[0].id});}catch{}}
+}
 io.on('connection',s=>{
   const ctx=()=>{const r=rooms.get(s.data.code);const p=r?.players.find(x=>x.id===s.data.pid);if(!r||!p)throw Error('Not in a room');return{r,p};};
-  const on=(ev:string,fn:(r:R,p:P,a:any)=>void)=>s.on(ev,(a:any,ack?:Function)=>{try{const{r,p}=ctx();fn(r,p,a||{});push(r);ack?.({});}catch(e:any){ack?.({error:e.message});}});
+  const on=(ev:string,fn:(r:R,p:P,a:any)=>void)=>(H[ev]=fn,s.on(ev,(a:any,ack?:Function)=>{try{const{r,p}=ctx();fn(r,p,a||{});push(r);ack?.({});}catch(e:any){ack?.({error:e.message});}}));
   const seat=(r:R,p:P)=>{s.data.code=r.code;s.data.pid=p.id;p.sock=s.id;s.join(r.code);s.emit('joined',{code:r.code,sid:p.id});push(r);};
   const mkP=(name:string):P=>({id:randomUUID(),name:String(name||'').trim().slice(0,16)||'Player',ready:false,hand:[],score:0,hats:0,laid:false});
   s.on('create',({name}:any,ack?:Function)=>{
@@ -59,6 +108,12 @@ io.on('connection',s=>{
       p=mkP(name);r.players.push(p);say(r,`${p.name} joined`);}
     seat(r,p);ack?.({});});
   on('ready',(r,p)=>{if(r.phase==='lobby')p.ready=!p.ready;});
+  on('addBot',(r,p)=>{if(p.id!==r.host||r.phase!=='lobby')throw Error('Host only');if(r.players.length>=10)throw Error('Room full');
+    const nm=(NAMES.find(n=>!r.players.some(x=>x.name===n+' 🤖'))||'Bot'+r.players.length)+' 🤖';
+    r.players.push({id:randomUUID(),name:nm,ready:true,hand:[],score:0,hats:0,laid:false,bot:true});say(r,`${nm} joined`);});
+  on('removeBot',(r,p,a)=>{if(p.id!==r.host||r.phase!=='lobby')throw Error('Host only');r.players=r.players.filter(x=>!(x.bot&&x.id===a.id));});
+  on('abort',(r,p)=>{if(p.id!==r.host||r.phase!=='play')throw Error('Host only');
+    r.result={winner:'',aborted:true,cancelled:true,rows:[],over:[]};r.phase='roundEnd';say(r,'Host ended the round — no points, it will be replayed');});
   on('settings',(r,p,a)=>{if(p.id!==r.host||r.phase!=='lobby')throw Error('Host only');const c=r.cfg;
     if([2,4].includes(a.jokers))c.jokers=a.jokers;if([20,25].includes(a.jokerPts))c.jokerPts=a.jokerPts;
     if([1,11].includes(a.acePts))c.acePts=a.acePts;if(a.hatLimit>=30&&a.hatLimit<=500)c.hatLimit=Math.round(a.hatLimit);});
@@ -84,7 +139,7 @@ io.on('connection',s=>{
   on('next',(r,p)=>{if(p.id!==r.host||r.phase!=='roundEnd')throw Error('Host only');if(!r.result?.cancelled)r.round++;startRound(r);});
   on('rematch',(r,p)=>{if(p.id!==r.host||r.phase!=='over')throw Error('Host only');r.players.forEach(x=>{x.score=0;x.hats=0;});r.round=1;r.log=[];say(r,'Rematch!');startRound(r);});
   on('lobby',(r,p)=>{if(p.id!==r.host||!['over','roundEnd'].includes(r.phase))throw Error('Host only');
-    r.phase='lobby';r.round=1;r.players.forEach(x=>{x.score=0;x.hats=0;x.ready=false;x.hand=[];});r.melds=[];r.result=undefined;});
+    r.phase='lobby';r.round=1;r.players.forEach(x=>{x.score=0;x.hats=0;x.ready=!!x.bot;x.hand=[];});r.melds=[];r.result=undefined;});
   s.on('disconnect',()=>{const r=rooms.get(s.data.code);const p=r?.players.find(x=>x.id===s.data.pid);if(!r||!p||p.sock!==s.id)return;
     p.sock=undefined;say(r,`${p.name} disconnected`);
     if(r.host===p.id){const n=r.players.find(x=>x.sock);if(n){r.host=n.id;say(r,`${n.name} is now host`);}}
