@@ -42,4 +42,22 @@ h1{color:#c9a24a;letter-spacing:4px;text-align:center}.panel{background:#1b2219;
 .rb{width:62px;height:62px;border-radius:50%;border:3px solid #fff;font-size:22px;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1}.rb small{font-size:10px;font-weight:700}.rb.ok{background:#2e9e4f;color:#fff}.rb.no{background:#d32f2f;color:#fff}
 .tb{padding:6px 10px;font-size:13px}.pile{display:flex;flex-direction:column;align-items:center;gap:4px}.pile.hot .pc{box-shadow:0 0 0 3px #ffd54a,0 0 22px #ffd54a}.pile small{font-size:12px}.toast{font-size:12px;opacity:.9;margin-bottom:6px}
 .land .pc{width:68px;height:98px}.land .pc .ix{font-size:18px}.land .pc.sm{width:42px;height:60px}.land .hand .pc{margin-right:-34px}.land .piles .pc{width:78px;height:112px}.land .rb{width:54px;height:54px}.land .hand{padding-top:22px}
+
+.pc.joker{background:#ffd54a;color:#1b1b1b;border-color:#b8860b}.pc.joker.red{color:#1b1b1b}
+.ghost{position:fixed!important;z-index:999;pointer-events:none;margin:0!important;transform:scale(1.12) rotate(5deg)!important;opacity:.95;box-shadow:0 12px 24px #000a}
+.gc{position:absolute;right:2px;top:2px;background:#d32f2f;color:#fff;border-radius:9px;font:700 11px sans-serif;padding:1px 5px}
+.hot{outline:3px dashed #ffd54a!important;outline-offset:2px}.hand .pc{touch-action:pan-x}.pile{touch-action:none}.pile.ready .pc{box-shadow:0 0 0 3px #ffd54a,0 0 22px #ffd54a}
+.app.gm,.app.land{height:100dvh;min-height:0;overflow:hidden}.landwrap .app.land{height:100%}.gm{padding:8px;gap:6px}
+.gm .table{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto minmax(0,1fr);grid-template-areas:"opps opps" "piles melds";flex:1;min-height:0;gap:8px;overflow:hidden}
+.gm .opps{grid-area:opps;flex-wrap:nowrap;overflow-x:auto}.gm .piles{grid-area:piles;flex-direction:column;flex-wrap:nowrap;gap:14px;align-self:start}.gm .melds{grid-area:melds;overflow:auto;align-content:flex-start}
+.opps{padding:8px 12px 4px}.piles{flex-wrap:nowrap}
+.me{display:grid;grid-template-columns:1fr auto;grid-template-areas:"toast toast" "tools acts" "hand hand" "err err";gap:4px 8px;align-items:center}
+.me .toast{grid-area:toast}.me .tools{grid-area:tools;flex-wrap:nowrap}.me .acts{grid-area:acts;display:flex;gap:8px}.me .hand{grid-area:hand}.me .err{grid-area:err;min-height:0}
+.app.land{grid-template-columns:auto auto 1fr;grid-template-rows:auto minmax(0,1fr) auto;grid-template-areas:"hd hd hd" "opps piles melds" "me me me";--ch:clamp(50px,17vh,92px)}
+.land .opps{flex-direction:column;flex-wrap:nowrap;overflow-y:auto;overflow-x:visible;padding:6px 14px 6px 6px}.land .piles{flex-direction:row;align-self:center;gap:12px}
+.land .me{grid-template-areas:"tools acts" "hand acts" "err err"}.land .toast{display:none}.land .me .acts{flex-direction:column}
+.land .pc{height:var(--ch);width:calc(var(--ch)*.7)}.land .pc .ix{font-size:calc(var(--ch)*.19)}.land .pc.sm{height:calc(var(--ch)*.62);width:calc(var(--ch)*.43)}
+.land .piles .pc{height:calc(var(--ch)*1.15);width:calc(var(--ch)*.8)}.land .hand{padding-top:20px}.land .hand .pc{margin-right:calc(var(--ch)*-.36)}.land .hand .pc:last-child{margin-right:0}
+.land .av .ring{width:38px;height:38px;font-size:16px}.land .hd{padding:0}.land .rb{width:50px;height:50px}
+.landwrap.rot{width:100vh;width:100dvh;height:100vw}.landwrap:not(.rot){padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 </style></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>

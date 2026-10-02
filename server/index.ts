@@ -2,8 +2,8 @@ import express from 'express';import http from 'http';import {Server} from 'sock
 import {Card,Config,Meld,Slot,DEFAULT_CONFIG,RANKS,SUITS,buildDeck,checkMeld,canReplace,pointValue} from '../shared/rules';
 const app=express();app.use(express.static('dist'));
 const srv=http.createServer(app);const io=new Server(srv);
-interface P{id:string;name:string;sock?:string;ready:boolean;hand:Card[];score:number;hats:number;laid:boolean;bot?:boolean}
-interface R{bt?:any;code:string;host:string;cfg:Config;phase:'lobby'|'play'|'roundEnd'|'over';players:P[];deck:Card[];discard:Card[];melds:Meld[];turn:number;drew:boolean;log:string[];round:number;result?:any}
+interface P{id:string;name:string;sock?:string;ready:boolean;hand:Card[];score:number;hats:number;laid:boolean;bot?:boolean;wins?:number}
+interface R{bt?:any;finished?:boolean;code:string;host:string;cfg:Config;phase:'lobby'|'play'|'roundEnd'|'over';players:P[];deck:Card[];discard:Card[];melds:Meld[];turn:number;drew:boolean;log:string[];round:number;result?:any}
 const rooms=new Map<string,R>();const H:any={}; // H = action handlers, reused by bots
 const AL='ABCDEFGHJKLMNPQRTUVWXYZ2346789'; // no O/0/I/1/S/5
 const shuffle=<T,>(a:T[])=>{for(let i=a.length-1;i>0;i--){const j=randomInt(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;};
@@ -12,7 +12,7 @@ const cs=(c:Card)=>c.rank==='JOKER'?'Joker':c.rank+'♠♥♦♣'['SHDC'.indexOf
 // Each player gets ONLY their own hand; others' hands are just counts (revealed in result at round end)
 const view=(r:R,p:P)=>({code:r.code,host:r.host,you:p.id,cfg:r.cfg,phase:r.phase,round:r.round,turn:r.players[r.turn]?.id,drew:r.drew,
   deck:r.deck.length,top:r.discard.at(-1)??null,melds:r.melds,log:r.log.slice(-30),hand:p.hand,result:r.result,
-  players:r.players.map(q=>({id:q.id,name:q.name,ready:q.ready,connected:!!q.sock||!!q.bot,bot:!!q.bot,n:q.hand.length,score:q.score,hats:q.hats,laid:q.laid}))});
+  players:r.players.map(q=>({id:q.id,name:q.name,ready:q.ready,connected:!!q.sock||!!q.bot,bot:!!q.bot,wins:q.wins||0,n:q.hand.length,score:q.score,hats:q.hats,laid:q.laid}))});
 const push=(r:R)=>{r.players.forEach(p=>p.sock&&io.to(p.sock).emit('state',view(r,p)));
   if(r.phase==='play'&&r.players[r.turn]?.bot&&!r.bt)r.bt=setTimeout(()=>{r.bt=undefined;botTurn(r);push(r);},1300);};
 function startRound(r:R){
@@ -31,7 +31,7 @@ function endRound(r:R,w:P){
   r.result={winner:w.name,rows,cancelled:false,over};r.phase='roundEnd';
   if(over.length===n){r.result.cancelled=true;say(r,'Everyone over the limit — round cancelled, replay');return;}
   r.players.forEach(p=>p.score+=rows.find(x=>x.id===p.id)!.pts);
-  if(over.length===n-1){r.phase='over';r.result.champion=r.players.find(p=>!over.includes(p.id))!.name;say(r,`Game over — ${r.result.champion} wins`);return;}
+  if(over.length===n-1){r.phase='over';const ch=r.players.find(p=>!over.includes(p.id))!;ch.wins=(ch.wins||0)+1;r.finished=true;r.result.champion=ch.name;say(r,`Game over — ${r.result.champion} wins`);return;}
   const top=Math.max(...r.players.filter(p=>!over.includes(p.id)).map(p=>p.score));
   r.players.filter(p=>over.includes(p.id)).forEach(p=>{p.hats++;p.score=top;say(r,`${p.name} gets a hat (καπέλο) and re-enters at ${top}`);});
 }
@@ -105,12 +105,12 @@ io.on('connection',s=>{
     let p=r.players.find(x=>x.id===sid);
     if(p){if(p.sock&&p.sock!==s.id)io.sockets.sockets.get(p.sock)?.disconnect();say(r,`${p.name} reconnected`);}
     else{if(r.phase!=='lobby')return ack?.({error:'Game already started'});if(r.players.length>=10)return ack?.({error:'Room full'});
-      p=mkP(name);r.players.push(p);say(r,`${p.name} joined`);}
+      p=mkP(name);p.score=Math.max(0,...r.players.map(x=>x.score));r.players.push(p);say(r,`${p.name} joined`);}
     seat(r,p);ack?.({});});
   on('ready',(r,p)=>{if(r.phase==='lobby')p.ready=!p.ready;});
   on('addBot',(r,p)=>{if(p.id!==r.host||r.phase!=='lobby')throw Error('Host only');if(r.players.length>=10)throw Error('Room full');
     const nm=(NAMES.find(n=>!r.players.some(x=>x.name===n+' 🤖'))||'Bot'+r.players.length)+' 🤖';
-    r.players.push({id:randomUUID(),name:nm,ready:true,hand:[],score:0,hats:0,laid:false,bot:true});say(r,`${nm} joined`);});
+    r.players.push({id:randomUUID(),name:nm,ready:true,hand:[],score:Math.max(0,...r.players.map(x=>x.score)),hats:0,laid:false,bot:true});say(r,`${nm} joined`);});
   on('removeBot',(r,p,a)=>{if(p.id!==r.host||r.phase!=='lobby')throw Error('Host only');r.players=r.players.filter(x=>!(x.bot&&x.id===a.id));});
   on('abort',(r,p)=>{if(p.id!==r.host||r.phase!=='play')throw Error('Host only');
     r.result={winner:'',aborted:true,cancelled:true,rows:[],over:[]};r.phase='roundEnd';say(r,'Host ended the round — no points, it will be replayed');});
@@ -118,7 +118,7 @@ io.on('connection',s=>{
     if([2,4].includes(a.jokers))c.jokers=a.jokers;if([20,25].includes(a.jokerPts))c.jokerPts=a.jokerPts;
     if([1,11].includes(a.acePts))c.acePts=a.acePts;if(a.hatLimit>=30&&a.hatLimit<=500)c.hatLimit=Math.round(a.hatLimit);});
   on('start',(r,p)=>{if(p.id!==r.host||r.phase!=='lobby')throw Error('Host only');if(r.players.length<2)throw Error('Need 2+ players');
-    if(r.players.some(x=>x.id!==r.host&&!x.ready))throw Error('Not everyone is ready');say(r,'Game started');startRound(r);});
+    if(r.players.some(x=>x.id!==r.host&&!x.ready))throw Error('Not everyone is ready');if(r.finished){r.players.forEach(x=>{x.score=0;x.hats=0;});r.round=1;r.finished=false;}say(r,'Game started');startRound(r);});
   on('draw',(r,p,a)=>{OK(r,p);if(r.drew)throw Error('Already drew');
     const c=a.src==='discard'?r.discard.pop():draw1(r);if(!c)throw Error('Empty pile');p.hand.push(c);r.drew=true;
     say(r,`${p.name} drew from the ${a.src==='discard'?`discard (${cs(c)})`:'deck'}`);});
@@ -137,9 +137,9 @@ io.on('connection',s=>{
     p.hand=p.hand.filter(x=>x!==c);r.discard.push(c);say(r,`${p.name} discarded ${cs(c)}`);
     if(!p.hand.length)return endRound(r,p);r.turn=(r.turn+1)%r.players.length;r.drew=false;});
   on('next',(r,p)=>{if(p.id!==r.host||r.phase!=='roundEnd')throw Error('Host only');if(!r.result?.cancelled)r.round++;startRound(r);});
-  on('rematch',(r,p)=>{if(p.id!==r.host||r.phase!=='over')throw Error('Host only');r.players.forEach(x=>{x.score=0;x.hats=0;});r.round=1;r.log=[];say(r,'Rematch!');startRound(r);});
+  on('rematch',(r,p)=>{if(p.id!==r.host||r.phase!=='over')throw Error('Host only');r.players.forEach(x=>{x.score=0;x.hats=0;});r.round=1;r.finished=false;r.log=[];say(r,'Rematch!');startRound(r);});
   on('lobby',(r,p)=>{if(p.id!==r.host||!['over','roundEnd'].includes(r.phase))throw Error('Host only');
-    r.phase='lobby';r.round=1;r.players.forEach(x=>{x.score=0;x.hats=0;x.ready=!!x.bot;x.hand=[];});r.melds=[];r.result=undefined;});
+    if(r.phase==='roundEnd'&&!r.result?.cancelled)r.round++;r.phase='lobby';r.players.forEach(x=>{x.ready=!!x.bot;x.hand=[];});r.melds=[];r.result=undefined;});
   s.on('disconnect',()=>{const r=rooms.get(s.data.code);const p=r?.players.find(x=>x.id===s.data.pid);if(!r||!p||p.sock!==s.id)return;
     p.sock=undefined;say(r,`${p.name} disconnected`);
     if(r.host===p.id){const n=r.players.find(x=>x.sock);if(n){r.host=n.id;say(r,`${n.name} is now host`);}}
